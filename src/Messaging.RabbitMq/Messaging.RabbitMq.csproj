@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Messaging.RabbitMq</RootNamespace>
+    <PackageId>Messaging.RabbitMq.Core</PackageId>
+    <Description>Shared RabbitMQ configuration and publisher utilities for all services. REQUIRED for publishing notification events.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Messaging.RabbitMq.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MassTransit.RabbitMQ" Version="8.*" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.*" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="10.*" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.*" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="NotificationService.Contracts" Version="1.0.1" />
+  </ItemGroup>
+
+</Project>
