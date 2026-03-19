@@ -43,6 +43,23 @@ builder.Services.AddRabbitMqMessaging(builder.Configuration, x =>
 });
 ```
 
+### Custom Resilience Options
+
+Override the default resilience settings per service:
+
+```csharp
+using Messaging.RabbitMq.Configuration;
+
+builder.Services.AddRabbitMqMessaging(builder.Configuration,
+    configureConsumers: x => { x.AddConsumer<MyConsumer>(); },
+    resilienceOptions: new ResilienceOptions
+    {
+        RetryIntervals = [TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(10)],
+        CircuitBreakerTripThreshold = 3,
+        CircuitBreakerActiveDuration = TimeSpan.FromSeconds(30),
+    });
+```
+
 ### Publish Events
 
 Inject `INotificationEventPublisher` and publish events:
@@ -78,6 +95,30 @@ public class QuestionnaireService
 }
 ```
 
+### Graceful Degradation (Fire-and-Forget)
+
+Use `TryPublishAsync` when notifications are non-critical and the primary operation
+must succeed even if RabbitMQ is down:
+
+```csharp
+public async Task UpdateMenuAsync(Menu menu)
+{
+    // Primary operation: save menu (must succeed)
+    await _repository.UpdateAsync(menu);
+
+    // Non-critical: send notification (must NOT fail the menu update)
+    await _notificationPublisher.TryPublishAsync(new MenuUpdatedEvent
+    {
+        TenantId = menu.TenantId,
+        UserId = menu.UserId,
+        MenuId = menu.Id,
+        MenuName = menu.Name,
+        UpdatedByUserName = currentUser.Name
+    });
+    // Returns false if publish failed -- error is logged, no exception thrown
+}
+```
+
 ### Batch Publishing
 
 For multiple notifications:
@@ -93,13 +134,31 @@ var events = users.Select(u => new TemplateUpdatedEvent
 });
 
 await _notificationPublisher.PublishBatchAsync(events);
+
+// Or with graceful degradation:
+int successCount = await _notificationPublisher.TryPublishBatchAsync(events);
 ```
 
-## Features
+## Resilience Features
 
 - **Automatic Retry**: Messages are retried with exponential backoff (1s, 5s, 15s, 30s)
-- **In-Memory Outbox**: Ensures messages are published reliably within a transaction
+- **Circuit Breaker**: Trips after 5 failures in 30s, resets after 60s. Prevents cascading failures by pausing message consumption while the system recovers.
+- **In-Memory Outbox**: Ensures messages published during consumer execution are only sent after the consumer completes successfully.
+- **Error Queues**: MassTransit automatically creates `_error` and `_skipped` queues for each consumer endpoint. Messages that fail all retries are moved to `_error` (dead-letter).
+- **Graceful Degradation**: `TryPublishAsync` / `TryPublishBatchAsync` swallow exceptions for fire-and-forget scenarios.
+- **Health Check Degradation**: RabbitMQ health reports `Degraded` (not `Unhealthy`) so publisher-only services keep serving HTTP requests.
 - **Structured Logging**: All publish operations are logged with correlation IDs
+
+## Default Resilience Settings
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| Retry intervals | 1s, 5s, 15s, 30s | Exponential backoff |
+| Circuit breaker enabled | true | Trips on repeated failures |
+| Trip threshold | 5 failures | In tracking period |
+| Tracking period | 30 seconds | Failure counting window |
+| Reset interval | 60 seconds | Time before circuit resets |
+| In-memory outbox | true | Transactional publish |
 
 ## Dependencies
 

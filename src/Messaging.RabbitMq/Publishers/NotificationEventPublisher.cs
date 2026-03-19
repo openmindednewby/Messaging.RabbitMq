@@ -1,4 +1,4 @@
-using MassTransit;
+﻿using MassTransit;
 using Microsoft.Extensions.Logging;
 using NotificationService.Contracts.Events;
 
@@ -6,6 +6,8 @@ namespace Messaging.RabbitMq.Publishers;
 
 /// <summary>
 /// Implementation of <see cref="INotificationEventPublisher"/> using MassTransit.
+/// Provides both strict publishing (throws on failure) and graceful degradation
+/// (fire-and-forget) modes for notification events.
 /// </summary>
 internal sealed class NotificationEventPublisher : INotificationEventPublisher
 {
@@ -66,5 +68,54 @@ internal sealed class NotificationEventPublisher : INotificationEventPublisher
         {
             await PublishAsync(@event, cancellationToken);
         }
+    }
+
+    /// <inheritdoc />
+    public async Task<bool> TryPublishAsync<TEvent>(TEvent @event, CancellationToken cancellationToken = default)
+        where TEvent : class, INotificationEvent
+    {
+        try
+        {
+            await PublishAsync(@event, cancellationToken);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            // Error is already logged in PublishAsync. Log the degradation decision.
+            _logger.LogWarning(ex,
+                "Notification publish failed for {EventType} (user {UserId}). " +
+                "Graceful degradation: primary operation will continue without notification",
+                @event.NotificationType,
+                @event.UserId);
+            return false;
+        }
+    }
+
+    /// <inheritdoc />
+    public async Task<int> TryPublishBatchAsync<TEvent>(IEnumerable<TEvent> events, CancellationToken cancellationToken = default)
+        where TEvent : class, INotificationEvent
+    {
+        var eventList = events.ToList();
+        var successCount = 0;
+
+        _logger.LogDebug(
+            "Attempting to publish batch of {Count} notification events with graceful degradation",
+            eventList.Count);
+
+        foreach (var @event in eventList)
+        {
+            if (await TryPublishAsync(@event, cancellationToken))
+                successCount++;
+        }
+
+        if (successCount < eventList.Count)
+        {
+            _logger.LogWarning(
+                "Batch publish partially failed: {SuccessCount}/{TotalCount} events published successfully",
+                successCount,
+                eventList.Count);
+        }
+
+        return successCount;
     }
 }
