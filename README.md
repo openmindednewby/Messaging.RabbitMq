@@ -143,7 +143,7 @@ int successCount = await _notificationPublisher.TryPublishBatchAsync(events);
 
 - **Automatic Retry**: Messages are retried with exponential backoff (1s, 5s, 15s, 30s)
 - **Circuit Breaker**: Trips after 5 failures in 30s, resets after 60s. Prevents cascading failures by pausing message consumption while the system recovers.
-- **In-Memory Outbox**: Ensures messages published during consumer execution are only sent after the consumer completes successfully.
+- **In-Memory Outbox**: Publishes made during a consumer are held until it completes successfully, so a consumer that throws does not announce work it did not do. ⚠️ **This is NOT a transactional outbox** — the pending messages live in *process memory*, are tied to no database transaction, and are lost on crash. For durability (message committed in the SAME transaction as the state change) you need MassTransit's `AddEntityFrameworkOutbox` + `UseBusOutbox`, which this package does not wire up, or a domain outbox table.
 - **Error Queues**: MassTransit automatically creates `_error` and `_skipped` queues for each consumer endpoint. Messages that fail all retries are moved to `_error` (dead-letter).
 - **Graceful Degradation**: `TryPublishAsync` / `TryPublishBatchAsync` swallow exceptions for fire-and-forget scenarios.
 - **Health Check Degradation**: RabbitMQ health reports `Degraded` (not `Unhealthy`) so publisher-only services keep serving HTTP requests.
@@ -158,7 +158,7 @@ int successCount = await _notificationPublisher.TryPublishBatchAsync(events);
 | Trip threshold | 5 failures | In tracking period |
 | Tracking period | 30 seconds | Failure counting window |
 | Reset interval | 60 seconds | Time before circuit resets |
-| In-memory outbox | true | Transactional publish |
+| In-memory outbox | true | Defer publishes until the consumer succeeds (in-memory; **not** durable) |
 
 ## Dependencies
 

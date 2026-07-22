@@ -68,10 +68,35 @@ public sealed class ResilienceOptions
         TimeSpan.FromSeconds(DefaultCircuitBreakerActiveDurationSeconds);
 
     /// <summary>
-    /// Whether to use the in-memory outbox for transactional consistency.
-    /// When enabled, messages are not sent until the consumer completes successfully.
-    /// Defaults to <c>true</c>.
+    /// Whether to defer publishes made during a consumer until that consumer completes
+    /// successfully. Defaults to <c>true</c>.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// ⚠️ <b>This is NOT a transactional outbox, and this documentation used to say it was.</b>
+    /// MassTransit's in-memory outbox holds pending publishes in <b>process memory</b> and releases
+    /// them when the consumer returns without throwing. It is not tied to any database transaction
+    /// and it does not survive a crash: if the process dies between the consumer's
+    /// <c>SaveChanges</c> and the release, the messages are <b>gone</b>, with no record that they
+    /// ever existed.
+    /// </para>
+    /// <para>
+    /// The previous wording — "the in-memory outbox for transactional consistency" — would lead a
+    /// reader to believe durability exists here where it does not, which is the most expensive kind
+    /// of documentation error: it stops people building the thing they actually need.
+    /// </para>
+    /// <para>
+    /// <b>What it IS good for:</b> not publishing an event for work that then threw. That is
+    /// genuinely useful and worth leaving on by default.
+    /// </para>
+    /// <para>
+    /// <b>If you need a real transactional outbox</b> — the message durably committed in the SAME
+    /// database transaction as the state change — you need either MassTransit's
+    /// <c>AddEntityFrameworkOutbox</c> + <c>UseBusOutbox</c> (not wired up by this package), or a
+    /// domain outbox table. Zygos F-07 implements the latter, because its failure destination is a
+    /// reconciliation break rather than an error queue.
+    /// </para>
+    /// </remarks>
     public bool UseInMemoryOutbox { get; set; } = true;
 
     /// <summary>
