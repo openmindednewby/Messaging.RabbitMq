@@ -40,6 +40,13 @@ public sealed class ResilienceOptions
     public TimeSpan[] RetryIntervals { get; set; } = DefaultRetryIntervals;
 
     /// <summary>
+    /// Exception types (and their subclasses) that are never retried: the message moves straight to the
+    /// endpoint's <c>_error</c> queue on the first failure. Applies bus-wide, so use exception types
+    /// specific to the failure (e.g. an unknown-tenant or contract-violation exception). Defaults to empty.
+    /// </summary>
+    public Type[] NonRetryableExceptions { get; set; } = [];
+
+    /// <summary>
     /// Whether to enable the circuit breaker on consumer endpoints.
     /// When enabled, consumers will stop processing messages after repeated failures,
     /// allowing the system to recover before resuming.

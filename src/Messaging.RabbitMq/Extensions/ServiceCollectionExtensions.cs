@@ -105,7 +105,13 @@ public static class ServiceCollectionExtensions
     {
         // 1. Message retry with configurable intervals (exponential backoff).
         //    Failed messages are retried in-process before being moved to the error queue.
-        cfg.UseMessageRetry(r => r.Intervals(resilience.RetryIntervals));
+        //    Exception types in NonRetryableExceptions skip retries and go straight to _error.
+        cfg.UseMessageRetry(r =>
+        {
+            r.Intervals(resilience.RetryIntervals);
+            if (resilience.NonRetryableExceptions.Length > 0)
+                r.Ignore(resilience.NonRetryableExceptions);
+        });
 
         // 2. Circuit breaker: trips after repeated failures, pausing message consumption
         //    to let the system recover. Messages queue in RabbitMQ during the open period.
@@ -128,6 +134,9 @@ public static class ServiceCollectionExtensions
         // 4. Configure consumer endpoints. MassTransit automatically creates
         //    _error and _skipped queues for each consumer endpoint.
         //    Messages that fail all retries are moved to the _error queue (dead-letter).
+        //    Raw JSON endpoints/publishers (opt-in via AddRawJsonConsumer / AddRawJsonPublisher)
+        //    are configured first; their consumers are excluded from ConfigureEndpoints.
+        RawJsonRegistrationExtensions.ConfigureRawJson(context, cfg);
         cfg.ConfigureEndpoints(context);
     }
 

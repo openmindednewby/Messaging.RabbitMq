@@ -139,6 +139,44 @@ await _notificationPublisher.PublishBatchAsync(events);
 int successCount = await _notificationPublisher.TryPublishBatchAsync(events);
 ```
 
+### Raw JSON interop (plain AMQP publishers, no MassTransit envelope) — since 1.3.0
+
+Opt-in. Services that do not call these methods are unchanged.
+
+Use it when the other side is not MassTransit (for example NestJS `amqplib`) and puts the bare JSON
+object on the wire, with no envelope and no `MT-MessageType` header.
+
+```csharp
+services.AddRabbitMqMessaging(builder.Configuration, x =>
+{
+    // Consume a raw JSON body from a topic exchange + routing key into a named durable queue.
+    x.AddRawJsonConsumer<VerificationCompletedConsumer>("aml.verification-completed",
+        e => e.BindToExchange("proovid.verification", "verification.completed"));
+
+    // Publish this message type as a raw JSON body (content-type application/json) to a fixed exchange + key.
+    x.AddRawJsonPublisher<VerificationScreeningCompleted>(
+        "proovid.verification", "verification.screening.completed");
+},
+new ResilienceOptions
+{
+    // Never retried: the message goes straight to aml.verification-completed_error.
+    NonRetryableExceptions = [typeof(UnknownTenantException)]
+});
+```
+
+| API | What it does |
+|---|---|
+| `AddRawJsonConsumer<TConsumer>(queue, e => e.BindToExchange(exchange, routingKey, type = "topic"))` | Dedicated receive endpoint: raw JSON deserializer as the default (accepts a body with **no content-type and no type header**, `RawSerializerOptions.AnyMessageType`), `ConfigureConsumeTopology = false`, durable exchange binding. The consumer is excluded from `ConfigureEndpoints`, so no enveloped duplicate endpoint is created. Failures go to `{queue}_error`. |
+| `AddRawJsonPublisher<TMessage>(exchange, routingKey, type = "topic")` | `TMessage` is published with the raw JSON serializer to that exchange and routing key. Every other message type keeps the envelope. Works for `context.Publish` inside a consumer (replies). |
+| `ResilienceOptions.NonRetryableExceptions` | Exception types (and subclasses) that skip the retry policy and move to `_error` on the first failure. |
+
+Notes:
+
+- JSON property names follow `System.Text.Json`; for a snake_case wire format put `[JsonPropertyName("request_id")]` on the contract.
+- `NonRetryableExceptions` is **bus-wide** (MassTransit's retry filter is configured on the bus), so use exception types specific to the failure.
+- Adding any raw JSON registration also registers the raw JSON serializer for `application/json` on the bus. Enveloped MassTransit traffic uses `application/vnd.masstransit+json` and is unaffected.
+- Integration tests (`tests/.../RawJson/RawJsonInteropTests.cs`, trait `Category=Integration`) use Testcontainers and need Docker. Offline, set `TESTCONTAINERS_RYUK_DISABLED=true` if the Ryuk image cannot be pulled.
+
 ## Resilience Features
 
 - **Automatic Retry**: Messages are retried with exponential backoff (1s, 5s, 15s, 30s)
