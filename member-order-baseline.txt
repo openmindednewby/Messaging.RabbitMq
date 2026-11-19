@@ -1,0 +1,1 @@
+tests/Messaging.RabbitMq.Tests/ServiceCollectionExtensionsTests.cs 1

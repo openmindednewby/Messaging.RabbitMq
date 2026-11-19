@@ -1,0 +1,1 @@
+tests/Messaging.RabbitMq.Tests/NotificationEventPublisherTests.cs 477
